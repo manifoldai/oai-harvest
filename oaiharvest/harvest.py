@@ -56,10 +56,10 @@ from datetime import datetime
 import six.moves.urllib.parse as urllib
 from oaipmh.client import Client
 from oaipmh.error import NoRecordsMatchError
+from oaiharvest.metadata import DefaultingMetadataRegistry, XMLMetadataReader
 from six import string_types
 
 from .exceptions import NotOAIPMHBaseURLException
-from .metadata import DefaultingMetadataRegistry, XMLMetadataReader
 from .registry import verify_database
 
 
@@ -198,7 +198,47 @@ class DirectoryOAIHarvester(OAIHarvester):
         fp = os.path.join(self._dir, filename)
         return fp
 
+class arXivOAIHarvester(OAIHarvester):
+    """
+    OAI-PMH Harvester to output harvested arXiv records as a list
+    """
 
+    def __init__(self, mdRegistry, nRecs=0):
+        OAIHarvester.__init__(self, mdRegistry)
+        self.nRecs = nRecs
+
+    def harvest(self, baseUrl='http://export.arxiv.org/oai2', metadataPrefix='arXiv', **kwargs):
+        """Harvest records, return if completed.
+        
+        :rtype: bool
+        :returns: Were all available records fetched and stored?
+
+        Harvest records, output records to files in the directory and
+        return a boolean for whether or not all of the records that the
+        server could return were actually stored locally.
+        """
+        logger = logging.getLogger(__name__).getChild(self.__class__.__name__)
+        # A counter for the number of records actually returned
+        # enumerate() not used as it would include deleted records
+        i = 0
+        records = list()
+        for header, metadata, about in self._listRecords(
+                 baseUrl,
+                 metadataPrefix=metadataPrefix,
+                 **kwargs):
+            if self.nRecs and self.nRecs > 0 and self.nRecs <= i:
+                logger.info("Stopping harvest; set limit of {0} has been "
+                            "reached".format(self.nRecs))
+                break
+
+            if not header.isDeleted():
+                logger.debug('Appending record {0}'.format(i))
+                records.append(metadata)
+                i += 1
+
+        return records
+
+    
 def main(argv=None):
     """Process command line arguments, harvest records accordingly."""
     global argparser, metadata_registry
